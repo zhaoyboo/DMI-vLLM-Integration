@@ -47,7 +47,7 @@ def test_dense_qwen2_uses_the_registered_monitored_variant() -> None:
 
 
 @pytest.mark.parametrize("module_name", GPT2_MODULES)
-def test_gpt2_variants_use_v027_auto_loader_contract(
+def test_gpt2_variants_use_v029_auto_loader_contract(
     module_name: str,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -55,14 +55,15 @@ def test_gpt2_variants_use_v027_auto_loader_contract(
     calls: dict[str, object] = {}
 
     class FakeLoader:
-        def __init__(self, model: object, *, skip_substrs: list[str]) -> None:
+        def __init__(self, model: object) -> None:
             calls["model"] = model
-            calls["skip_substrs"] = skip_substrs
 
         def load_weights(
             self,
             weights: Iterable[tuple[str, torch.Tensor]],
+            *, mapper,
         ) -> set[str]:
+            calls["mapper"] = mapper
             materialized = list(weights)
             calls["weights"] = materialized
             return {name for name, _ in materialized}
@@ -74,7 +75,9 @@ def test_gpt2_variants_use_v027_auto_loader_contract(
     loaded = model.load_weights([("h.0.attn.c_proj.weight", weight)])
 
     assert calls["model"] is model
-    assert calls["skip_substrs"] == [".attn.bias", ".attn.masked_bias"]
+    assert calls["mapper"].orig_to_new_substr == {
+        ".attn.bias": None, ".attn.masked_bias": None,
+    }
     assert loaded == {"h.0.attn.c_proj.weight"}
     assert torch.equal(calls["weights"][0][1], weight.t())  # type: ignore[index]
 
@@ -163,9 +166,8 @@ def test_llama_ref_loader_passes_the_hf_to_vllm_mapper(
     calls: dict[str, object] = {}
 
     class FakeLoader:
-        def __init__(self, model: object, *, skip_prefixes: list[str] | None):
+        def __init__(self, model: object):
             calls["model"] = model
-            calls["skip_prefixes"] = skip_prefixes
 
         def load_weights(
             self,
@@ -192,7 +194,6 @@ def test_llama_ref_loader_passes_the_hf_to_vllm_mapper(
 
     assert loaded == {"loaded"}
     assert calls["model"] is model
-    assert calls["skip_prefixes"] is None
     assert calls["mapper"] is model.hf_to_vllm_mapper
     mapped_name, mapped_weight = next(
         iter(
@@ -341,7 +342,7 @@ def test_qwen2_moe_validates_selected_routing_capture_backend(
 
     class FakeMoERunner:
         is_monolithic = monolithic
-        is_internal_router = internal_router
+        gate = object() if internal_router else None
         do_naive_dispatch_combine = naive_dispatch
         moe_config = SimpleNamespace(
             pcp_size=2 if pcp_gather else 1,

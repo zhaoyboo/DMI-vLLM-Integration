@@ -96,10 +96,13 @@ class KimiK3PDecoderLayer(KimiDecoderLayer):
             self.hook_ln1(hidden_states)
             _capture_compare_buffer(self, "ln1", hidden_states)
 
+        full_rows = None
         if self.use_sequence_parallel:
             hidden_states = sp_all_gather(hidden_states)[: positions.shape[0]]
+            full_rows = hidden_states.shape[0]
         hidden_states = self._run_self_attn(positions, hidden_states)
-        if self.use_sequence_parallel:
+        # 0.29's fused GEMM-RS O projection already returns the local shard.
+        if self.use_sequence_parallel and hidden_states.shape[0] == full_rows:
             hidden_states = sp_reduce_scatter(hidden_states)
         if self.hook_attn_out.enabled:
             self.hook_attn_out(hidden_states)
@@ -158,12 +161,6 @@ class KimiK3PModel(KimiLinearModel):
             residual = intermediate_tensors["residual"]
         assert hidden_states is not None
 
-        aux_hidden_states: list[torch.Tensor] = []
-        if self.start_layer in self.aux_hidden_state_layers:
-            if self.use_attn_res or residual is None:
-                aux_hidden_states.append(hidden_states)
-            else:
-                aux_hidden_states.append(hidden_states + residual)
         full_num_tokens = positions.shape[0]
         if self.use_sequence_parallel:
             if envs.VLLM_MOE_SKIP_PADDING and is_forward_context_available():
@@ -173,6 +170,13 @@ class KimiK3PModel(KimiLinearModel):
                 )
             hidden_states = sp_shard(hidden_states)
             assert residual is None
+
+        aux_hidden_states: list[torch.Tensor] = []
+        if self.start_layer in self.aux_hidden_state_layers:
+            if self.use_attn_res or residual is None:
+                aux_hidden_states.append(hidden_states)
+            else:
+                aux_hidden_states.append(hidden_states + residual)
 
         prefix_sum = None
         if self.use_attn_res:
@@ -200,17 +204,19 @@ class KimiK3PModel(KimiLinearModel):
             if (layer_idx + 1) in self.aux_hidden_state_layers:
                 if self.use_attn_res:
                     assert prefix_sum is not None
-                    aux_hidden_state = prefix_sum + hidden_states
+                    assert residual is not None
+                    aux_hidden_state = self._capture_aux_hidden_stream(
+                        layer_idx, prefix_sum, hidden_states, residual
+                    )
                 else:
                     assert residual is not None
                     aux_hidden_state = hidden_states + residual
-                if self.use_sequence_parallel:
-                    aux_hidden_state = sp_all_gather(aux_hidden_state)[:full_num_tokens]
                 aux_hidden_states.append(aux_hidden_state)
 
         assert hidden_states is not None
         assert residual is not None
         if not get_pp_group().is_last_rank:
+            assert not self.use_sequence_parallel
             if prefix_sum is not None:
                 hidden_states = hidden_states + prefix_sum
             return IntermediateTensors(
@@ -233,7 +239,13 @@ class KimiK3PModel(KimiLinearModel):
         else:
             hidden_states = hidden_states + residual
         if self.use_sequence_parallel:
-            hidden_states = sp_all_gather(hidden_states)[:full_num_tokens]
+            if aux_hidden_states:
+                hidden_size = hidden_states.shape[-1]
+                packed = torch.cat([hidden_states, *aux_hidden_states], dim=-1)
+                packed = sp_all_gather(packed)[:full_num_tokens]
+                hidden_states, *aux_hidden_states = packed.split(hidden_size, dim=-1)
+            else:
+                hidden_states = sp_all_gather(hidden_states)[:full_num_tokens]
         if self.hook_resid_final.enabled:
             self.hook_resid_final(hidden_states)
             _capture_compare_buffer(self, "resid_final", hidden_states)

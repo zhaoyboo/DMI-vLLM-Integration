@@ -1,30 +1,38 @@
 # DMI vLLM integration
 
 `DMI-vLLM-Integration` connects DMI to an unmodified official vLLM
-installation. Release `0.27.1` supports exactly vLLM `0.27.1` and requires
+installation. This **unreleased 0.29.0 port** targets exactly vLLM `0.29.0` and requires
 DMI integration API v1, first released with DMI `1.1.0`.
 
 Choose a [DMI release tag](https://github.com/ProjectDMX/DMI/tags) in the
 range `>=v1.1.0,<v2.0.0`, then follow the `docs/install.md` shipped in that
-checkout, including its native-backend build. Next, choose the latest immutable
-[integration tag](https://github.com/ProjectDMX/DMI-vLLM-Integration/tags)
-that targets vLLM `0.27.1`. From that integration checkout, run:
+checkout, including its native-backend build. This port was tested with DMI
+`c222f18c4db55f6f2d7136b1d6608c0b540b273a` (API v1). Build the native backend
+against the **same PyTorch/CUDA as vLLM 0.29.0**, not a 0.27 environment.
+From the `vllm-0.29-support` integration checkout, run:
 
 ```bash
-python -m pip install 'vllm==0.27.1'
+python -m pip install 'vllm==0.29.0'
 python -m pip install .
 ```
 
 The integration package is distributed from this source repository and its
 immutable tags; it is not published to PyPI or another package registry.
 
-Both vLLM 0.27.1 GPU model runners are supported. The V2 runner can be used
-through vLLM's normal architecture-dependent default, or selected explicitly
+Both V1 and V2 adapters are ported. Local GPU qualification is bounded to
+Qwen3-0.6B, BF16, TP1; see the [0.29 audit and evidence](docs/v029-port.md).
+The V2 runner can be used through vLLM's normal default, or selected explicitly
 with `VLLM_USE_V2_MODEL_RUNNER=1`; V1 remains supported with
 `VLLM_USE_V2_MODEL_RUNNER=0`. V2 speculative decoding is rejected before CUDA
 initialization because its computed-token accounting is not yet part of this
 contract. Other unsupported architectures and parallel modes are also rejected
 before model execution.
+
+The bounded Qwen3 cell passes both eager and default compilation/CUDA graphs,
+including V2 AOT-cache reload. Use a **fresh version-specific**
+`VLLM_CACHE_ROOT` when migrating; old shared compilation artifacts are not a
+valid baseline. The eager quickstart below is a convenience, not a V2 requirement.
+V2 batch-sharded sampling is rejected when `final_logits` capture is selected.
 
 The public `dmi_vllm_integration.worker.DMXGPUWorker` entry point imports and
 inherits the existing V1 worker so its subclass behavior remains intact. At
@@ -37,8 +45,10 @@ the dynamic entry point.
 
 ## Model support
 
-The following model families are available in this source tree. Experimental
-entries have not completed real-checkpoint GPU qualification:
+The following model families have importable implementations in this source
+tree. **Only Qwen3-0.6B has local 0.29 GPU evidence**; earlier version results
+are not carried forward. Other entries are candidate coverage, not a claim that
+their checkpoints, quantizations, multimodal inputs or distributed modes work:
 
 - Apertus
 - DeepSeek V4 Flash (experimental)
@@ -55,7 +65,6 @@ entries have not completed real-checkpoint GPU qualification:
 - MiniCPM 4.1 (dense)
 - MiniMax-M2.7 (experimental)
 - Mistral
-- OLMo 3
 - Phi-3.5
 - Qwen2
 - Qwen2-MoE
@@ -69,6 +78,10 @@ top-k routing capture is selected for an MoE model, the loaded routing
 backend is validated after model load and before inference; it must expose the
 modular routing result consumed by fused MoE.
 
+OLMo 3's native module was removed in upstream 0.29. Its old DMI alias is
+therefore no longer registered; the port does not silently switch it to the
+Transformers backend.
+
 For offline inference, select DMI's worker through the Python API:
 
 ```python
@@ -77,6 +90,8 @@ from vllm import LLM, SamplingParams
 llm = LLM(
     model="Qwen/Qwen3-0.6B",
     worker_cls="dmi_vllm_integration.worker.DMXGPUWorker",
+    enforce_eager=True,
+    additional_config={"dmx_hook_selection": "resid_pre,final_ln,token_ids,final_logits"},
 )
 
 try:
@@ -95,7 +110,8 @@ architectures. Online serving also requires the opt-in finalization endpoint:
 ```bash
 export VLLM_PLUGINS=dmi_models,dmi_stop_monitoring
 vllm serve Qwen/Qwen3-0.6B \
-    --worker-cls dmi_vllm_integration.worker.DMXGPUWorker
+    --worker-cls dmi_vllm_integration.worker.DMXGPUWorker \
+    --enforce-eager
 ```
 
 After stopping external request intake, call

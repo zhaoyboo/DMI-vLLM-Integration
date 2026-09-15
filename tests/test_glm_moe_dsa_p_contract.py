@@ -337,10 +337,7 @@ def test_glm52_dense_mlp_post_hook_observes_post_activation_values() -> None:
     assert torch.equal(output, expected_post - 5)
 
 
-@pytest.mark.parametrize("internal_router", [False, True])
-def test_glm52_routing_hooks_preserve_external_and_internal_inputs(
-    internal_router,
-) -> None:
+def test_glm52_routing_hooks_preserve_runner_owned_gate() -> None:
     subject = GlmMoeDsaPMoE.__new__(GlmMoeDsaPMoE)
     nn.Module.__init__(subject)
     subject.is_sequence_parallel = False
@@ -381,15 +378,10 @@ def test_glm52_routing_hooks_preserve_external_and_internal_inputs(
         def __init__(self):
             super().__init__()
             self.router = Router()
-            self.is_internal_router = internal_router
 
         def forward(self, *, hidden_states, router_logits):
-            expected = hidden_states if internal_router else gate_logits
-            assert torch.equal(router_logits, expected)
-            if internal_router:
-                actual_logits, _ = subject.gate(hidden_states)
-            else:
-                actual_logits = router_logits
+            assert router_logits is hidden_states
+            actual_logits, _ = subject.gate(hidden_states)
             self.used_route = self.router.select_experts(
                 hidden_states=hidden_states,
                 router_logits=actual_logits,

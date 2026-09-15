@@ -139,7 +139,7 @@ class GlmMoeDsaPMoE(DeepseekV2MoE):
         topk_weights: torch.Tensor,
         topk_ids: torch.Tensor,
     ) -> None:
-        if self.experts.is_internal_router and self.hook_router_logits.enabled:
+        if self.hook_router_logits.enabled:
             self.hook_router_logits(router_logits)
             _capture_compare_buffer(self, "router_logits", router_logits)
         topk_ids = topk_ids.to(torch.int32)
@@ -168,17 +168,9 @@ class GlmMoeDsaPMoE(DeepseekV2MoE):
 
         num_tokens, hidden_dim = hidden_states.shape
         flat_states = hidden_states.view(-1, hidden_dim)
-        if self.experts.is_internal_router:
-            experts_router_input = flat_states
-        else:
-            router_logits, _ = self.gate(flat_states)
-            if self.hook_router_logits.enabled:
-                self.hook_router_logits(router_logits)
-                _capture_compare_buffer(self, "router_logits", router_logits)
-            experts_router_input = router_logits
         output = self.experts(
             hidden_states=flat_states,
-            router_logits=experts_router_input,
+            router_logits=flat_states,
         )
         return output.view(num_tokens, hidden_dim)
 

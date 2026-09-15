@@ -33,7 +33,7 @@ jobs:
           python -m build
           python -m twine check dist/*
           python -m pip install --no-deps dist/*.whl
-          python -c 'from importlib.metadata import distribution; from importlib.util import find_spec; d = distribution("DMI-vLLM-Integration"); eps = {(e.group, e.name) for e in d.entry_points}; assert d.version == "0.27.1"; assert ("vllm.general_plugins", "dmi_models") in eps; assert ("vllm.endpoint_plugins", "dmi_stop_monitoring") in eps; assert find_spec("dmi_vllm_integration.v2.worker") is not None'
+          python -c 'from importlib.metadata import distribution; from importlib.util import find_spec; d = distribution("DMI-vLLM-Integration"); eps = {(e.group, e.name) for e in d.entry_points}; assert d.version == "0.29.0"; assert ("vllm.general_plugins", "dmi_models") in eps; assert ("vllm.endpoint_plugins", "dmi_stop_monitoring") in eps; assert find_spec("dmi_vllm_integration.v2.worker") is not None'
       - uses: actions/upload-artifact@v4
         with:
           name: distributions
@@ -41,7 +41,7 @@ jobs:
           if-no-files-found: error
 
   cpu:
-    name: Official vLLM 0.27.1 / DMI ${{ matrix.dmi_ref }}
+    name: Official vLLM 0.29.0 / DMI ${{ matrix.dmi_ref }}
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     strategy:
@@ -69,12 +69,12 @@ jobs:
       - name: Install the pinned DMI API, official vLLM, and this checkout
         run: |
           python -m pip install --upgrade pip
-          python -m pip install 'vllm==0.27.1' pytest
+          python -m pip install 'vllm==0.29.0' pytest
           python -m pip install --no-deps --editable .ci/dmi
           python -m pip install --no-deps --editable .
       - name: Confirm the official runtime boundary
         run: |
-          python -c 'from importlib.metadata import version; import pathlib, vllm; assert version("vllm") == "0.27.1"; assert "dmi_vllm_integration" not in pathlib.Path(vllm.__file__).parts'
+          python -c 'from importlib.metadata import version; import pathlib, vllm; assert version("vllm") == "0.29.0"; assert "dmi_vllm_integration" not in pathlib.Path(vllm.__file__).parts'
       - name: Run portable CPU integration tests
         run: |
           python -m compileall -q src tests tests_v2

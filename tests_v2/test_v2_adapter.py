@@ -106,6 +106,44 @@ def test_v2_records_prepared_layout_and_input_dtype() -> None:
     ) is torch.int32
 
 
+@pytest.mark.parametrize("selection", ["final_logits", "vllm-full"])
+def test_v2_sharded_sampling_rejects_final_logits_before_device_init(selection):
+    worker = DMXV2GPUWorker.__new__(DMXV2GPUWorker)
+    worker.vllm_config = _worker_config()
+    worker.use_v2_model_runner = True
+    worker.vllm_config.parallel_config.enable_batch_sharded_sampling = True
+    worker.vllm_config.additional_config["dmx_hook_selection"] = selection
+    with pytest.raises(RuntimeError, match="batch-sharded"):
+        worker._validate_dmi_config()
+    # This setting only changes sampling rows, not the decoder's input rows.
+    worker.vllm_config.additional_config["dmx_hook_selection"] = "resid_pre"
+    worker._validate_dmi_config()
+    assert worker.vllm_config.parallel_config.enable_batch_sharded_sampling is True
+
+
+def test_v2_existing_prompt_logprobs_reject_final_logits(monkeypatch):
+    from vllm.v1.worker.gpu_worker import Worker
+
+    worker = DMXV2GPUWorker.__new__(DMXV2GPUWorker)
+    worker.adaptor = SimpleNamespace(
+        engine=SimpleNamespace(capture_enabled=True),
+        _has_global_hooks=True,
+        _captures_final_logits=True,
+        _step_state=_VLLMStepState(),
+    )
+    worker.model_runner = SimpleNamespace(prompt_logprobs_worker=SimpleNamespace(
+        in_progress_prompt_logprobs={"existing": []},
+    ))
+    scheduler = _scheduler()
+    scheduler.scheduled_new_reqs = []
+    monkeypatch.setattr("dmi_vllm_integration.v2.adapter.has_ec_transfer", lambda: False)
+    called = []
+    monkeypatch.setattr(Worker, "execute_model", lambda *_args: called.append(True))
+    with pytest.raises(RuntimeError, match="prompt_logprobs"):
+        worker.execute_model(scheduler)
+    assert not called
+
+
 def test_v2_preflight_uses_real_dispatch_descriptor() -> None:
     candidate = BatchExecutionDescriptor(
         cg_mode=CUDAGraphMode.FULL,
@@ -188,8 +226,8 @@ def _wrapped_worker(*, force_eager: bool = False):
         num_tokens=5,
     )
 
-    def original_prepare(received, descriptor):
-        events.append(("prepare", received, descriptor))
+    def original_prepare(received, batch_req_state, descriptor):
+        events.append(("prepare", received, batch_req_state, descriptor))
         return input_batch
 
     graph_candidate = BatchExecutionDescriptor(
@@ -204,6 +242,7 @@ def _wrapped_worker(*, force_eager: bool = False):
         num_tokens,
         uniform_token_count,
         num_active_loras,
+        max_query_len=None,
     ):
         events.append(
             (
@@ -212,6 +251,7 @@ def _wrapped_worker(*, force_eager: bool = False):
                 num_tokens,
                 uniform_token_count,
                 num_active_loras,
+                max_query_len,
             )
         )
         return graph_candidate
@@ -242,9 +282,12 @@ def test_v2_wrappers_commit_after_real_dispatch_and_prepare() -> None:
         scheduler_output=scheduler_output,
     )
 
-    descriptor = manager.dispatch(2, 5, 1, num_active_loras=0)
+    descriptor = manager.dispatch(2, 5, 1, num_active_loras=0, max_query_len=3)
     assert descriptor is candidate
-    runner.prepare_inputs(scheduler_output, descriptor)
+    batch_req_state = object()
+    runner.prepare_inputs(scheduler_output, batch_req_state, descriptor)
+    assert events[0][-1] == 3
+    assert events[2][2] is batch_req_state
 
     assert [event[0] for event in events] == [
         "dispatch",
@@ -272,7 +315,7 @@ def test_v2_wrapper_forces_eager_and_restores_dispatch() -> None:
         num_reqs=2,
         num_active_loras=0,
     )
-    runner.prepare_inputs(scheduler_output, descriptor)
+    runner.prepare_inputs(scheduler_output, object(), descriptor)
     assert adaptor._step_state.force_eager_latch
 
     worker._restore_v2_dispatch_wrapper()

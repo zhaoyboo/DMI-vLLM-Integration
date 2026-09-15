@@ -192,14 +192,11 @@ class Qwen2DecoderLayer(nn.Module):
         residual: torch.Tensor | None,
     ) -> tuple[torch.Tensor, torch.Tensor]:
         if residual is None:
-            if self.hook_resid_pre.enabled:
-                self.hook_resid_pre(hidden_states)
             residual = hidden_states
             hidden_states = self.input_layernorm(hidden_states)
         else:
-            if self.hook_resid_pre.enabled:
-                self.hook_resid_pre(hidden_states + residual)
             hidden_states, residual = self.input_layernorm(hidden_states, residual)
+        self.hook_resid_pre(residual)
 
         self.hook_ln1(hidden_states)
         hidden_states = self.self_attn(
@@ -208,11 +205,10 @@ class Qwen2DecoderLayer(nn.Module):
         )
         self.hook_attn_out(hidden_states)
 
-        if self.hook_resid_mid.enabled:
-            self.hook_resid_mid(hidden_states + residual)
         hidden_states, residual = self.post_attention_layernorm(
             hidden_states, residual
         )
+        self.hook_resid_mid(residual)
         self.hook_ln2(hidden_states)
         self.hook_mlp_in(hidden_states)
         hidden_states = self.mlp(hidden_states)
@@ -279,9 +275,8 @@ class Qwen2Model(_Qwen2Model):
                 {"hidden_states": hidden_states, "residual": residual}
             )
 
-        if self.hook_resid_final.enabled:
-            self.hook_resid_final(hidden_states + residual)
-        hidden_states, _ = self.norm(hidden_states, residual)
+        hidden_states, final_residual = self.norm(hidden_states, residual)
+        self.hook_resid_final(final_residual)
         self.hook_final_ln(hidden_states)
         if aux_hidden_states:
             return hidden_states, aux_hidden_states
@@ -303,15 +298,14 @@ class Qwen2PForCausalLM(_Qwen2ForCausalLM):
         )
 
         if get_pp_group().is_last_rank:
+            self.lm_head = ParallelLMHead(
+                config.vocab_size,
+                config.hidden_size,
+                quant_config=quant_config,
+                prefix=maybe_prefix(prefix, "lm_head"),
+            )
             if config.tie_word_embeddings:
-                self.lm_head = self.model.embed_tokens
-            else:
-                self.lm_head = ParallelLMHead(
-                    config.vocab_size,
-                    config.hidden_size,
-                    quant_config=quant_config,
-                    prefix=maybe_prefix(prefix, "lm_head"),
-                )
+                self.lm_head = self.lm_head.tie_weights(self.model.embed_tokens)
         else:
             self.lm_head = PPMissingLayer()
 

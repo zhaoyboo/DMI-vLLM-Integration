@@ -251,7 +251,8 @@ class _AttentionKernel(nn.Module):
         return q
 
 
-def test_granite_attention_hooks_bind_pre_rope_qkv_and_pre_o_proj_z() -> None:
+@pytest.mark.parametrize("use_rope", [True, False])
+def test_granite_attention_hooks_bind_pre_rope_qkv_and_pre_o_proj_z(use_rope) -> None:
     attention = GranitePAttention.__new__(GranitePAttention)
     nn.Module.__init__(attention)
     attention.q_size = 4
@@ -262,6 +263,7 @@ def test_granite_attention_hooks_bind_pre_rope_qkv_and_pre_o_proj_z() -> None:
     qkv = torch.arange(8, dtype=torch.float32).reshape(1, 8)
     attention.qkv_proj = _Projection(qkv)
     attention.rotary_emb = _Rotary()
+    attention.use_rope = use_rope
     attention.attn = _AttentionKernel()
     attention.o_proj = _Projection(torch.full((1, 4), 99.0))
     captured: dict[str, torch.Tensor] = {}
@@ -281,7 +283,7 @@ def test_granite_attention_hooks_bind_pre_rope_qkv_and_pre_o_proj_z() -> None:
     assert torch.equal(captured["q"], qkv[:, :4].view(1, 2, 2))
     assert torch.equal(captured["k"], qkv[:, 4:6].view(1, 1, 2))
     assert torch.equal(captured["v"], qkv[:, 6:].view(1, 1, 2))
-    assert torch.equal(captured["z"], qkv[:, :4] + 100)
+    assert torch.equal(captured["z"], qkv[:, :4] + (100 if use_rope else 0))
 
 
 def test_granite_instruments_the_upstream_tree_in_place() -> None:

@@ -24,7 +24,7 @@ def _native_extension_spec():
 def test_official_vllm_release_and_native_extension_are_coinstalled() -> None:
     native_spec = _native_extension_spec()
 
-    assert version("vllm") == "0.27.1"
+    assert version("vllm") == "0.29.0"
     assert Path(vllm.__file__).resolve().parent == Path(
         native_spec.origin
     ).resolve().parent

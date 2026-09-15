@@ -1,6 +1,6 @@
 """Observe the one routing result consumed by modular vLLM MoE experts.
 
-Official vLLM 0.27.1 has no public routing-observer hook. Monitored MoE models
+Official vLLM 0.29.0 has no public routing-observer hook. Monitored MoE models
 need the exact router logits, selected weights, and selected IDs without
 calling routing a second time, so this module wraps that release's
 ``select_experts`` boundary.
@@ -19,7 +19,7 @@ from packaging.version import Version
 import torch
 
 
-SUPPORTED_VLLM_VERSIONS = frozenset({"0.27.1"})
+SUPPORTED_VLLM_VERSIONS = frozenset({"0.29.0"})
 _PATCH_VERSION = 2
 _CLASS_PATCH_MARKER = "_dmi_routing_observer_patch_version"
 _OBSERVER_ATTRIBUTE = "_dmi_routing_observer"
@@ -45,7 +45,7 @@ def _fused_moe_router_class() -> type[Any]:
 
 
 def apply_fused_moe_router_observer_patch() -> bool:
-    """Install the vLLM 0.27.1 routing observer wrapper.
+    """Install the vLLM 0.29.0 routing observer wrapper.
 
     Returns ``True`` when this call installs the patch and ``False`` when the
     identical patch is already installed. Unsupported vLLM versions and a

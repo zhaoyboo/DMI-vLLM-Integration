@@ -55,6 +55,7 @@ from vllm.sequence import IntermediateTensors
 from vllm.model_executor.models.interfaces import SupportsPP
 from vllm.model_executor.models.utils import (
     AutoWeightsLoader,
+    WeightsMapper,
     make_empty_intermediate_tensors_factory,
     make_layers,
     maybe_prefix,
@@ -221,6 +222,10 @@ class GPT2Block(nn.Module):
 
 @support_torch_compile
 class GPT2Model(nn.Module):
+    hf_to_vllm_mapper = WeightsMapper(
+        orig_to_new_substr={".attn.bias": None, ".attn.masked_bias": None}
+    )
+
     def __init__(self, *, vllm_config: VllmConfig, prefix: str = ""):
         super().__init__()
 
@@ -304,10 +309,10 @@ class GPT2Model(nn.Module):
             yield name, loaded_weight
 
     def load_weights(self, weights: Iterable[tuple[str, torch.Tensor]]) -> set[str]:
-        loader = AutoWeightsLoader(
-            self, skip_substrs=[".attn.bias", ".attn.masked_bias"]
+        loader = AutoWeightsLoader(self)
+        return loader.load_weights(
+            self._transpose_conv1d(weights), mapper=self.hf_to_vllm_mapper
         )
-        return loader.load_weights(self._transpose_conv1d(weights))
 
 
 class GPT2CompareForCausalLM(nn.Module, SupportsPP):

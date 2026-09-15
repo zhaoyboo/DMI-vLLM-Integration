@@ -12,7 +12,7 @@ concurrency:
 
 jobs:
   release-gate:
-    name: Official vLLM 0.27.1 on self-hosted GPUs
+    name: Official vLLM 0.29.0 on self-hosted GPUs
     # This workflow is intentionally manual. The custom `gpu` label must
     # identify a release runner with two CUDA GPUs, cached test checkpoints,
     # the DMI native runtime, and ClickHouse on localhost:9000.
@@ -29,7 +29,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: ProjectDMX/DMI
-          ref: v1.1.0
+          ref: c222f18c4db55f6f2d7136b1d6608c0b540b273a
           path: .ci/dmi
           submodules: false
       - uses: actions/setup-python@v5
@@ -39,16 +39,16 @@ jobs:
       - name: Install official vLLM and build the pinned DMI API commit
         run: |
           python -m pip install --upgrade pip
-          python -m pip install 'vllm==0.27.1' clickhouse-driver pytest
-          git -C .ci/dmi submodule update --init --depth 1 libs/clickhouse-cpp
-          cmake -S .ci/dmi/libs/clickhouse-cpp -B .ci/dmi/libs/clickhouse-cpp/build -DCMAKE_BUILD_TYPE=Release -DCMAKE_POSITION_INDEPENDENT_CODE=ON
-          cmake --build .ci/dmi/libs/clickhouse-cpp/build -j2
-          make -C .ci/dmi/monitoring -j2
+          python -m pip install 'vllm==0.29.0' clickhouse-driver pytest
+          git -C .ci/dmi submodule update --init --depth 1 third_party/clickhouse-cpp
+          cmake -S .ci/dmi/third_party/clickhouse-cpp -B .ci/dmi/third_party/clickhouse-cpp/build -DCMAKE_BUILD_TYPE=Release -DCMAKE_POSITION_INDEPENDENT_CODE=ON
+          cmake --build .ci/dmi/third_party/clickhouse-cpp/build -j2
+          env -u LD_LIBRARY_PATH make -C .ci/dmi/native -j2
           python -m pip install --no-deps --editable .ci/dmi
           python -m pip install --no-deps --editable .
       - name: Verify release-runner prerequisites
         run: |
-          python -c 'from importlib.metadata import version; import torch; assert version("vllm") == "0.27.1"; assert torch.cuda.is_available(); assert torch.cuda.device_count() >= 2'
+          python -c 'from importlib.metadata import version; import torch; assert version("vllm") == "0.29.0"; assert torch.cuda.is_available(); assert torch.cuda.device_count() >= 2'
           python -c 'from dmi_vllm_integration.dmi_api import DMI_INTEGRATION_API_VERSION; assert DMI_INTEGRATION_API_VERSION == 1'
           clickhouse-client --host localhost --port 9000 --query 'SELECT 1'
           python -m pytest -q -m gpu tests/test_official_vllm_contract.py
@@ -56,6 +56,10 @@ jobs:
         run: >-
           python -m pytest -q
           -m "not gpu and not clickhouse and not e2e and not slow"
+      - name: Validate bounded 0.29 V1/V2 parity, storage, and AOT reload
+        run: |
+          run_root="$RUNNER_TEMP/dmi-vllm-release-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          CUDA_VISIBLE_DEVICES=0 DMI_V029_ARTIFACT_ROOT="$run_root" bash tests/run_v029_smoke.sh
       - name: Validate offline request order and capture by topology
         run: |
           run_root="$RUNNER_TEMP/dmi-vllm-release-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"

@@ -321,16 +321,12 @@ class LlamaDecoderLayer(nn.Module):
         hidden_states: torch.Tensor,
         residual: torch.Tensor | None,
     ) -> tuple[torch.Tensor, torch.Tensor]:
-        # resid_pre: read-only capture, preserves fused norm
-        if residual is not None:
-            if self.hook_resid_pre.enabled:
-                self.hook_resid_pre(hidden_states + residual)
-            hidden_states, residual = self.input_layernorm(hidden_states, residual)
-        else:
-            if self.hook_resid_pre.enabled:
-                self.hook_resid_pre(hidden_states)
+        if residual is None:
             residual = hidden_states
             hidden_states = self.input_layernorm(hidden_states)
+        else:
+            hidden_states, residual = self.input_layernorm(hidden_states, residual)
+        self.hook_resid_pre(residual)
 
         self.hook_ln1(hidden_states)
         hidden_states = self.self_attn(positions=positions, hidden_states=hidden_states)
@@ -451,9 +447,8 @@ class LlamaModel(nn.Module, EagleModelMixin):
             return IntermediateTensors(
                 {"hidden_states": hidden_states, "residual": residual})
 
-        if self.hook_resid_final.enabled:
-            self.hook_resid_final(hidden_states + residual)
-        hidden_states, _ = self.norm(hidden_states, residual)
+        hidden_states, final_residual = self.norm(hidden_states, residual)
+        self.hook_resid_final(final_residual)
         self.hook_final_ln(hidden_states)
         if aux_hidden_states:
             return hidden_states, aux_hidden_states
@@ -546,11 +541,13 @@ class LlamaPForCausalLM(
         self.hook_final_logits(logits)
         return logits
 
+    def compute_logits_local(self, hidden_states: torch.Tensor) -> torch.Tensor:
+        # Batch-sharded sampling is upstream-owned. The worker rejects
+        # final_logits selection for this layout; other hooks remain valid.
+        return self.logits_processor(self.lm_head, hidden_states, skip_gather=True)
+
     def load_weights(self, weights: Iterable[tuple[str, torch.Tensor]]) -> set[str]:
-        loader = AutoWeightsLoader(
-            self,
-            skip_prefixes=(["lm_head."] if self.config.tie_word_embeddings else None),
-        )
+        loader = AutoWeightsLoader(self)
         return loader.load_weights(weights)
 
     def _get_layer_hook_specs(self, layer_no: int, layer) -> list[HookSpec]:

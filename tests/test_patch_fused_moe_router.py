@@ -11,7 +11,7 @@ def _patch_fake_router(
     monkeypatch: pytest.MonkeyPatch,
     router_class: type,
     *,
-    version: str = "0.27.1",
+    version: str = "0.29.0",
 ) -> None:
     monkeypatch.setattr(
         fused_moe_router,
@@ -67,7 +67,7 @@ def test_patch_observes_the_single_returned_route_and_is_idempotent(
     assert second != returned
 
 
-@pytest.mark.parametrize("installed_version", ["0.27.1rc1", "0.27.1.post1", "0.28.0"])
+@pytest.mark.parametrize("installed_version", ["0.29.0rc1", "0.29.0.post1", "0.28.0"])
 def test_patch_rejects_unsupported_vllm_before_importing_router(
     monkeypatch: pytest.MonkeyPatch,
     installed_version: str,
@@ -83,15 +83,15 @@ def test_patch_rejects_unsupported_vllm_before_importing_router(
         lambda: pytest.fail("router class must not be imported"),
     )
 
-    with pytest.raises(RuntimeError, match=r"supports vLLM 0\.27\.1"):
+    with pytest.raises(RuntimeError, match=r"supports vLLM 0\.29\.0"):
         fused_moe_router.apply_fused_moe_router_observer_patch()
 
 
 def test_version_gate_accepts_local_build_metadata(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(fused_moe_router, "version", lambda name: "0.27.1+cu130")
-    assert fused_moe_router._installed_vllm_version() == "0.27.1"
+    monkeypatch.setattr(fused_moe_router, "version", lambda name: "0.29.0+cu130")
+    assert fused_moe_router._installed_vllm_version() == "0.29.0"
 
 
 def test_patch_rejects_a_conflicting_observer_api(

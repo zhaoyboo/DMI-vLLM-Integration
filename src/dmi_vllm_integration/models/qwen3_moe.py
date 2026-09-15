@@ -165,7 +165,7 @@ class Qwen3MoePSparseMoeBlock(Qwen3MoeSparseMoeBlock):
         topk_weights: torch.Tensor,
         topk_ids: torch.Tensor,
     ) -> None:
-        if self.experts.is_internal_router and self.hook_router_logits.enabled:
+        if self.hook_router_logits.enabled:
             self.hook_router_logits(router_logits)
             _capture_compare_buffer(self, "router_logits", router_logits)
         topk_ids = topk_ids.to(torch.int32)
@@ -196,17 +196,9 @@ class Qwen3MoePSparseMoeBlock(Qwen3MoeSparseMoeBlock):
         if self.is_sequence_parallel:
             hidden_states = sequence_parallel_chunk(hidden_states)
 
-        if self.experts.is_internal_router:
-            experts_router_input = hidden_states
-        else:
-            router_logits, _ = self.gate(hidden_states)
-            if self.hook_router_logits.enabled:
-                self.hook_router_logits(router_logits)
-                _capture_compare_buffer(self, "router_logits", router_logits)
-            experts_router_input = router_logits
         final_hidden_states = self.experts(
             hidden_states=hidden_states,
-            router_logits=experts_router_input,
+            router_logits=hidden_states,
         )
         if self.is_sequence_parallel:
             final_hidden_states = tensor_model_parallel_all_gather(
@@ -430,7 +422,7 @@ class Qwen3MoePForCausalLM(Qwen3MoeForCausalLM):
             prefix=maybe_prefix(prefix, "lm_head"),
         )
         if self.config.tie_word_embeddings:
-            self.lm_head.weight = self.model.embed_tokens.weight
+            self.lm_head = self.lm_head.tie_weights(self.model.embed_tokens)
         self.logits_processor = LogitsProcessor(config.vocab_size)
         self.make_empty_intermediate_tensors = (
             self.model.make_empty_intermediate_tensors

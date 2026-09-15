@@ -31,7 +31,6 @@ ARCHITECTURE_REMAP: dict[str, str] = {
     "MiniCPMForCausalLM": "DMIMiniCPMForCausalLM",
     "MiniMaxM2ForCausalLM": "DMIMiniMaxM2ForCausalLM",
     "MistralForCausalLM": "DMIMistralForCausalLM",
-    "Olmo3ForCausalLM": "DMIOlmo3ForCausalLM",
     "Phi3ForCausalLM": "DMIPhi3ForCausalLM",
     "Qwen2ForCausalLM": "DMIQwen2ForCausalLM",
     "Qwen2MoeForCausalLM": "DMIQwen2MoeForCausalLM",

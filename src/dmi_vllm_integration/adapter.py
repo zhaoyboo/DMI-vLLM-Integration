@@ -885,7 +885,7 @@ class VLLMAdaptor(BackendAdaptor):
                 "select one with --moe-backend (for example, triton)."
             )
         if captures_router_logits and any(
-            runner.is_monolithic and runner.is_internal_router
+            runner.is_monolithic and runner.gate is not None
             for runner in moe_runners
         ):
             raise RuntimeError(

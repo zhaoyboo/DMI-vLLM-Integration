@@ -87,7 +87,7 @@ def test_runtime_uses_the_supported_installed_vllm_and_extension():
         None,
     )
 
-    assert version("vllm") == "0.27.1"
+    assert version("vllm") == "0.29.0"
     assert native_spec is not None
     assert source.parent == Path(native_spec.origin).resolve().parent
     assert "dmi_vllm_integration" not in source.parts

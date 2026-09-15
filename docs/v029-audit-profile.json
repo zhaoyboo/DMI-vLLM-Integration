@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "name": "Official vLLM 0.29.0 external integration",
+  "adapter": "src/dmi_vllm_integration/plugin.py",
+  "vllm_source": null,
+  "scan_paths": ["src/dmi_vllm_integration"],
+  "native_paths": [],
+  "model_dir": "src/dmi_vllm_integration/models",
+  "worker_class": null,
+  "variant_registry": "MODEL_REGISTRATIONS",
+  "forward_methods": []
+}

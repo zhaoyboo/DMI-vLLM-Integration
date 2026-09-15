@@ -110,7 +110,8 @@ class GranitePAttention(GraniteAttention):
             self.hook_k(k.unflatten(-1, (self.num_kv_heads, self.head_dim)))
         if self.hook_v.enabled:
             self.hook_v(v.unflatten(-1, (self.num_kv_heads, self.head_dim)))
-        q, k = self.rotary_emb(positions, q, k)
+        if self.use_rope:
+            q, k = self.rotary_emb(positions, q, k)
         attn_output = self.attn(q, k, v)
         if self.hook_z.enabled:
             self.hook_z(attn_output)
@@ -278,7 +279,7 @@ class GranitePForCausalLM(GraniteForCausalLM):
                 prefix=maybe_prefix(prefix, "lm_head"),
             )
             if config.tie_word_embeddings:
-                self.lm_head.weight = self.model.embed_tokens.weight
+                self.lm_head = self.lm_head.tie_weights(self.model.embed_tokens)
             logit_scale = getattr(config, "logit_scale", 1.0)
             if hasattr(config, "logits_scaling"):
                 logit_scale /= config.logits_scaling

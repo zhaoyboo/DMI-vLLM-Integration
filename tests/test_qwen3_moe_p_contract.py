@@ -290,13 +290,14 @@ def test_qwen3_moe_routing_hooks_observe_authoritative_gate_values() -> None:
             return route
 
     class Experts(nn.Module):
-        is_internal_router = False
 
         def __init__(self):
             super().__init__()
             self.router = ExpertRouter()
 
         def forward(self, *, hidden_states, router_logits):
+            assert router_logits is hidden_states
+            router_logits, _ = subject.gate(hidden_states)
             self.used_route = self.router.select_experts(
                 hidden_states=hidden_states,
                 router_logits=router_logits,
@@ -360,7 +361,6 @@ def test_qwen3_moe_internal_router_preserves_upstream_runner_input() -> None:
             return route
 
     class Experts(nn.Module):
-        is_internal_router = True
 
         def __init__(self):
             super().__init__()

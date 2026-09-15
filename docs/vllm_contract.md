@@ -4,6 +4,9 @@ This integration depends on the following behavior from the target official
 vLLM release, including private execution interfaces used to observe the model
 work that vLLM actually performs.
 
+Target: **vLLM 0.29.0**. The assumptions below define the intended boundary,
+not GPU qualification for every mode; see [0.29 evidence](v029-port.md).
+
 ## Model runner and lifecycle
 
 - Both the V1 and V2 GPU model runners are supported. vLLM may select V2 by
@@ -16,9 +19,11 @@ work that vLLM actually performs.
 - The V1 model runner exposes `_prepare_inputs` and
   `_determine_batch_execution_and_padding` with the signatures wrapped by the
   integration.
-- The V2 model runner exposes `prepare_inputs`, and its initialized
-  `cudagraph_manager` exposes `dispatch`, with the signatures wrapped by the
-  integration.
+- The V2 model runner exposes
+  `prepare_inputs(scheduler_output, batch_req_state, batch_desc)`; the integration
+  forwards the batch request state unchanged. Its graph manager exposes
+  `dispatch(num_reqs, num_tokens, uniform_token_count, num_active_loras,
+  max_query_len=None)`; the optional query bound must also be forwarded.
 - One worker process executes at most one model forward at a time.
 - An `execute_model` update with zero scheduled tokens retires request state
   without invoking the model.
@@ -53,6 +58,10 @@ On a prefix-cache hit, the runner-specific computed-token array identifies the
 first token executed by the current forward; cached-prefix activations are
 absent. Final logits on the next-token-only path used for capture contain one
 row per active request in packed request order.
+
+V2 batch-sharded sampling may call `compute_logits_local` instead of
+`compute_logits`. It is rejected when final-logit capture is selected; hidden
+state monitoring does not change the upstream sampling implementation.
 
 V2 owns GPU-only block-table rows through `StagedWriteTensor`, with block counts
 mirrored on the CPU. DMI's current `StepContext`, metadata schema, and hook
@@ -137,7 +146,7 @@ required TP multiple.
 - The returned rows retain the token-major input-row order for that router
   invocation.
 - Without EPLB, returned expert IDs are global logical expert IDs.
-- `MoERunner.is_monolithic`, `is_internal_router`,
+- `MoERunner.is_monolithic`, `gate is not None`,
   `do_naive_dispatch_combine`, `moe_config.pcp_size`, and
   `moe_config.moe_parallel_config.use_all2all_kernels` describe whether routing
   is internal and whether token rows move across ranks before routing.

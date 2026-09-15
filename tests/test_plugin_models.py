@@ -53,9 +53,6 @@ EXPECTED_REGISTRATIONS = {
     "DMIMistralForCausalLM": (
         "dmi_vllm_integration.models.mistral:MistralPForCausalLM"
     ),
-    "DMIOlmo3ForCausalLM": (
-        "dmi_vllm_integration.models.olmo3:Olmo3PForCausalLM"
-    ),
     "DMIPhi3ForCausalLM": (
         "dmi_vllm_integration.models.phi3:Phi3PForCausalLM"
     ),

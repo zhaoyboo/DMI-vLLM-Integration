@@ -151,7 +151,6 @@ _NO_DMI_SPECIFIC_VALIDATOR = {
     "GraniteForCausalLM",
     "KimiK3ForConditionalGeneration",
     "MiniMaxM2ForCausalLM",
-    "Olmo3ForCausalLM",
     "Phi3ForCausalLM",
 }
 

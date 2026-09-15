@@ -830,7 +830,7 @@ class VLLMAdaptor(BackendAdaptor):
                 "select one with --moe-backend (for example, triton)."
             )
         if captures_router_logits and any(
-            runner.is_monolithic and runner.is_internal_router
+            runner.is_monolithic and runner.gate is not None
             for runner in moe_runners
         ):
             raise RuntimeError(
@@ -1535,6 +1535,16 @@ class DMXV2GPUWorker(Worker):
                 "DMI vLLM V2 model-runner support does not yet include "
                 "speculative decoding"
             )
+        if (
+            getattr(parallel, "enable_batch_sharded_sampling", False)
+            and HOOK_TYPE_FINAL_LOGITS in selected_hook_types
+        ):
+            raise RuntimeError(
+                "DMI final_logits capture does not support batch-sharded "
+                "sampling: compute_logits_local has sharded vocabulary and "
+                "request rows. Disable enable_batch_sharded_sampling or select "
+                "hooks without final_logits. Hidden-state capture is unaffected."
+            )
         if HOOK_TYPE_TOKEN_IDS in selected_hook_types:
             unavailable_reason = _token_ids_unavailability_reason(model)
             if unavailable_reason is not None:
@@ -1587,9 +1597,12 @@ class DMXV2GPUWorker(Worker):
 
         def _wrapped_prepare_inputs(
             scheduler_output: Any,
+            batch_req_state: Any,
             batch_desc: Any,
         ) -> Any:
-            input_batch = original_prepare(scheduler_output, batch_desc)
+            input_batch = original_prepare(
+                scheduler_output, batch_req_state, batch_desc
+            )
             state = adaptor._step_state
             if state.phase is VLLMStepPhase.ARMED:
                 adaptor._record_v2_real_layout(
@@ -1655,12 +1668,14 @@ class DMXV2GPUWorker(Worker):
             num_tokens: int,
             uniform_token_count: Optional[int],
             num_active_loras: int,
+            max_query_len: Optional[int] = None,
         ) -> Any:
             candidate = original_dispatch(
                 num_reqs,
                 num_tokens,
                 uniform_token_count,
                 num_active_loras,
+                max_query_len=max_query_len,
             )
             state = adaptor._step_state
             if state.phase is VLLMStepPhase.IDLE:
@@ -2019,7 +2034,11 @@ class DMXV2GPUWorker(Worker):
             )
         if captures_final_logits:
             active_prompt_logprobs = bool(
-                getattr(self.model_runner, "num_prompt_logprobs", None)
+                getattr(
+                    getattr(self.model_runner, "prompt_logprobs_worker", None),
+                    "in_progress_prompt_logprobs",
+                    None,
+                )
             )
             new_prompt_logprobs = any(
                 getattr(
