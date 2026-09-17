@@ -9,6 +9,25 @@ not GPU qualification for every mode; see [0.29 evidence](v029-port.md).
 
 ## Model runner and lifecycle
 
+The bounded `tests/v029_smoke.py` harness requires the multiprocess
+`EngineCoreProc`: its test-only `pause_scheduler('wait')` barrier is unsupported
+by in-process EngineCore (`VLLM_ENABLE_V1_MULTIPROCESSING=0` is rejected early).
+It also advances the private `LLM.request_counter` to keep request IDs fresh
+while preserving the AOT cache key. The reload check matches the exact 0.29
+log string `Directly load AOT compilation` from `compilation/decorators.py`;
+this is a version-pinned log-string contract, not a public runtime API.
+
+The optional eager residual oracle reads norm inputs before in-place updates
+and V1 `input_batch.req_ids` after execution, paired with scheduled token counts.
+It does not consume DMI's committed layout or HookPoint values as its reference.
+It is explicitly a white-box numerical diagnostic, not a black-box API test.
+
+MoE boundary not exercised by any registered DMI model in 0.29:
+`MoERunner._fse_fuse_gate` combines expert and shared-expert gate logits into
+`num_experts + 1` columns before `select_experts`. That path is outside the
+routing-hook shape contract. Qualify or reject it before adding a model that
+uses it; current Qwen3-Next is not a DMI target. No new support is implied here.
+
 - Both the V1 and V2 GPU model runners are supported. vLLM may select V2 by
   default for architectures that opt into it.
 - Worker initialization calls `init_device`, `load_model`,

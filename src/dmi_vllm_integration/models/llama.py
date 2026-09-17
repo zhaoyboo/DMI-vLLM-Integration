@@ -23,7 +23,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Adapted from vllm/model_executor/models/llama.py in official vLLM 0.27.1.
+# Adapted from vllm/model_executor/models/llama.py in official vLLM 0.29.0.
 """Inference-only LLaMA model with monitoring hooks.
 Copy of llama.py with HookPoints added inline."""
 

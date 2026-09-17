@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
 
-# Adapted from vllm/model_executor/models/gpt_oss.py in official vLLM 0.27.1.
+# Adapted from vllm/model_executor/models/gpt_oss.py in official vLLM 0.29.0.
 """GPT-OSS DMI model with same-graph transport reference buffers."""
 
 from __future__ import annotations

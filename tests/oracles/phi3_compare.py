@@ -3,7 +3,7 @@
 
 # Adapted from llama.py
 
-# Adapted from vllm/model_executor/models/phi3.py in official vLLM 0.27.1.
+# Adapted from vllm/model_executor/models/phi3.py in official vLLM 0.29.0.
 """Phi-3 compare model for byte-identical DMI transport tests."""
 
 from tests.oracles.llama_compare import LlamaCompareForCausalLM

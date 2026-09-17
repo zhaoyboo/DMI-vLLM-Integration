@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
 
-# Adapted from vllm/models/kimi_k3/nvidia/model.py in official vLLM 0.27.1.
+# Adapted from vllm/models/kimi_k3/nvidia/model.py in official vLLM 0.29.0.
 """Kimi K3 multimodal wrapper exporting reduced language-decoder hooks."""
 
 from __future__ import annotations
@@ -216,7 +216,7 @@ class KimiK3PModel(KimiLinearModel):
         assert hidden_states is not None
         assert residual is not None
         if not get_pp_group().is_last_rank:
-            assert not self.use_sequence_parallel
+            assert not self.use_sequence_parallel, "Currently, SP is not supported with PP"
             if prefix_sum is not None:
                 hidden_states = hidden_states + prefix_sum
             return IntermediateTensors(

@@ -19,7 +19,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Adapted from vllm/model_executor/models/gpt2.py in official vLLM 0.27.1.
+# Adapted from vllm/model_executor/models/gpt2.py in official vLLM 0.29.0.
 # Hooked GPT-2 for ring transport monitoring.
 # Standalone copy of gpt2.py with HookPoints added inline.
 """Inference-only GPT-2 model with monitoring hooks."""

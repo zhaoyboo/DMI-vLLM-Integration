@@ -23,7 +23,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Adapted from vllm/model_executor/models/llama.py in official vLLM 0.27.1.
+# Adapted from vllm/model_executor/models/llama.py in official vLLM 0.29.0.
 # Reference Llama model for identical check.
 # Copy of llama.py with # BENCH_OFF D2D capture lines.
 # No HookPoints. Buffer allocation reads REF_CONFIG env.

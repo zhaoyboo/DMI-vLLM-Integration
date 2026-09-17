@@ -16,7 +16,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Adapted from vllm/model_executor/models/gemma3.py in official vLLM 0.27.1.
+# Adapted from vllm/model_executor/models/gemma3.py in official vLLM 0.29.0.
 """Gemma 3 text model with DMI's canonical activation hook inventory."""
 
 from __future__ import annotations

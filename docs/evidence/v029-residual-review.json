@@ -1,0 +1,21 @@
+{
+  "status": "passed",
+  "model": "Qwen/Qwen3-0.6B",
+  "vllm": "0.29.0",
+  "dmi_core": "c222f18c4db55f6f2d7136b1d6608c0b540b273a",
+  "runner": "vllm.v1.worker.gpu_model_runner",
+  "execution": "eager",
+  "dtype": "bfloat16",
+  "tensor_parallel_size": 1,
+  "requests": 3,
+  "generated_tokens_per_request": 8,
+  "logit_steps": 8,
+  "storage_rows": 1416,
+  "residual_reference_rows": 1368,
+  "residual_atol": 0,
+  "residual_rtol": 0,
+  "residual_hooks": ["resid_pre", "resid_mid", "resid_final"],
+  "oracle": "old residual expression computed from norm inputs before in-place updates; matched to stored rows and stock references",
+  "capture_id": "dmi-v029-residual-review.b5g8ouqk",
+  "graph_residual_numeric_comparison": "not run"
+}

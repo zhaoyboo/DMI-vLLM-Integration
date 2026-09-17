@@ -26,13 +26,19 @@ def compare(stock_path: Path, monitored_path: Path) -> None:
     for step, (left, right) in enumerate(zip(stock["logits"], monitored["logits"])):
         assert torch.equal(left, right), f"raw logits differ at step {step}"
     assert monitored["storage_rows"] > 0, "no persisted DMI evidence"
+    residual_rows = 0
+    if stock.get("residuals") is not None or monitored.get("residuals") is not None:
+        from tests.v029_residual_reference import compare_residual_rows
+        residual_rows = compare_residual_rows(stock["residuals"], monitored["residuals"])
     print(json.dumps({"status": "passed", "requests": len(stock["public"]),
                       "logit_steps": len(stock["logits"]),
                       "storage_rows": monitored["storage_rows"],
-                      "runner": stock["runner"]}, indent=2))
+                      "runner": stock["runner"],
+                      "residual_reference_rows": residual_rows}, indent=2))
 
 
-def check_storage(client, model_id: str, outputs, config, hooks: str) -> int:
+def check_storage(client, model_id: str, outputs, config, hooks: str,
+                  residual_reference=None) -> int:
     import torch
     from dmi.storage.clickhouse import CHClickhouseDriverReadOnly
     from tests.blackbox.storage_contracts import StorageRow, storage_contract_mismatches
@@ -55,6 +61,10 @@ def check_storage(client, model_id: str, outputs, config, hooks: str) -> int:
         "hooks": [
             {"act_name": "blocks.hook_resid_pre", "layers": "all", "dtype": "torch.bfloat16",
              "shape_tail": [config.hidden_size]},
+            {"act_name": "blocks.hook_resid_mid", "layers": "all", "dtype": "torch.bfloat16",
+             "shape_tail": [config.hidden_size]},
+            {"act_name": "hook_resid_final", "layers": [-1], "dtype": "torch.bfloat16",
+             "shape_tail": [config.hidden_size]},
             {"act_name": "hook_final_ln", "layers": [-1], "dtype": "torch.bfloat16",
              "shape_tail": [config.hidden_size]},
             {"act_name": "token_ids", "layers": [-1], "dtype": "torch.int",
@@ -65,16 +75,22 @@ def check_storage(client, model_id: str, outputs, config, hooks: str) -> int:
     }
     selected = set(hooks.split(","))
     hook_names = {"blocks.hook_resid_pre": "resid_pre", "hook_final_ln": "final_ln",
+                  "blocks.hook_resid_mid": "resid_mid", "hook_resid_final": "resid_final",
                   "token_ids": "token_ids", "final_logits": "final_logits"}
     contract["hooks"] = [hook for hook in contract["hooks"]
                          if hook_names[hook["act_name"]] in selected]
     errors = storage_contract_mismatches(rows, contract)
     assert not errors, errors
     by_request = {output.request_id: output for output in outputs}
+    stored_residuals = []
     for row in raw:
         request_id, act, _layer, _rank, start, end, dtype, shape, payload = row
         tensor = CHClickhouseDriverReadOnly.torch_decode(dtype, shape, payload)
         assert tuple(tensor.shape) == tuple(shape)
+        if act in {"blocks.hook_resid_pre", "blocks.hook_resid_mid", "hook_resid_final"}:
+            stored_residuals.append({"request_id": request_id, "act_name": act,
+                                     "layer_no": _layer, "start": start,
+                                     "end": end, "tensor": tensor})
         if tensor.is_floating_point() and act != "final_logits":
             assert torch.isfinite(tensor).all(), (request_id, act, "nonfinite")
         if act == "token_ids":
@@ -92,7 +108,16 @@ def check_storage(client, model_id: str, outputs, config, hooks: str) -> int:
         tokens = [r for r in rows if r.request_id == request_id and r.act_name == "token_ids"]
         if "token_ids" in selected:
             assert max(r.end_token_idx for r in tokens) == expected_end
+    if residual_reference is not None:
+        from tests.v029_residual_reference import compare_residual_rows
+        compare_residual_rows(residual_reference, stored_residuals)
     return len(rows)
+
+
+def require_multiprocess_engine():
+    if os.environ.get("VLLM_ENABLE_V1_MULTIPROCESSING", "1") == "0":
+        raise RuntimeError("v029 smoke requires VLLM_ENABLE_V1_MULTIPROCESSING=1: "
+                           "pause_scheduler('wait') is an EngineCoreProc-only barrier")
 
 
 def main() -> None:
@@ -104,6 +129,8 @@ def main() -> None:
     parser.add_argument("--model", default="Qwen/Qwen3-0.6B")
     parser.add_argument("--runner", choices=["v1", "v2"], default="v2")
     parser.add_argument("--graph", action="store_true")
+    parser.add_argument("--residual-reference", action="store_true",
+                        help="independent old-expression oracle; V1 eager only")
     parser.add_argument("--hooks", default="resid_pre,final_ln,token_ids,final_logits")
     parser.add_argument("--custom-ops", choices=["all", "none"])
     parser.add_argument("--model-id", help="stable ID for AOT-cache replay tests")
@@ -115,8 +142,12 @@ def main() -> None:
         compare(args.stock, args.monitored)
         return
     assert args.output is not None
-    if not set(args.hooks.split(",")) <= {"resid_pre", "final_ln", "token_ids", "final_logits"}:
-        parser.error("this bounded storage oracle only covers resid_pre,final_ln,token_ids,final_logits")
+    if not set(args.hooks.split(",")) <= {"resid_pre", "resid_mid", "resid_final", "final_ln", "token_ids", "final_logits"}:
+        parser.error("unsupported hook in the bounded storage oracle")
+    if args.residual_reference and (args.graph or args.runner != "v1" or not
+            {"resid_pre", "resid_mid", "resid_final"} <= set(args.hooks.split(","))):
+        parser.error("--residual-reference requires V1 eager and resid_pre,resid_mid,resid_final")
+    require_multiprocess_engine()
     if os.environ.get("DMI_VLLM_TEST_NATIVE_STUB") == "1":
         raise RuntimeError("GPU evidence cannot use the native stub")
     if args.runner == "v1":
@@ -134,6 +165,10 @@ def main() -> None:
     assert torch.cuda.is_available()
     model_id = args.model_id or f"dmi-v029-smoke-{uuid4().hex}"
     os.environ["DMI_SMOKE_LOGITS_PATH"] = str(args.output.with_suffix(".logits.pt").resolve())
+    if args.residual_reference:
+        os.environ["DMI_SMOKE_RESIDUALS_PATH"] = str(args.output.with_suffix(".residuals.pt").resolve())
+    else:
+        os.environ.pop("DMI_SMOKE_RESIDUALS_PATH", None)
     kwargs = dict(model=args.model, dtype="bfloat16", seed=42,
                   max_model_len=256, max_num_seqs=4, max_num_batched_tokens=64,
                   enable_prefix_caching=False, gpu_memory_utilization=0.35,
@@ -185,6 +220,8 @@ def main() -> None:
     core.call_utility("resume_scheduler")
     outputs = llm.wait_for_completion()
     llm.collective_rpc("smoke_dump")
+    residual_reference = (torch.load(os.environ["DMI_SMOKE_RESIDUALS_PATH"], weights_only=True)
+                          if args.residual_reference else None)
     storage_rows = 0
     if args.mode == "monitored":
         # Never swallow a flush failure; storage is part of this test's oracle.
@@ -192,7 +229,8 @@ def main() -> None:
         from clickhouse_driver import Client
         from transformers import AutoConfig
         storage_rows = check_storage(Client(args.db_host), model_id, outputs,
-                                     AutoConfig.from_pretrained(args.model), args.hooks)
+                                     AutoConfig.from_pretrained(args.model), args.hooks,
+                                     residual_reference=residual_reference)
     public = [{"request_id": o.request_id, "prompt_token_ids": o.prompt_token_ids,
                "text": o.outputs[0].text, "token_ids": list(o.outputs[0].token_ids),
                "finish_reason": o.outputs[0].finish_reason,
@@ -202,6 +240,7 @@ def main() -> None:
                 "configuration": configuration, "hooks": args.hooks,
                 "versions": {name: version(name) for name in ("vllm", "torch", "DMI", "DMI-vLLM-Integration")},
                 "storage_rows": storage_rows,
+                "residuals": residual_reference,
                 "logits": torch.load(os.environ["DMI_SMOKE_LOGITS_PATH"], weights_only=True)}, args.output)
     print(json.dumps({"mode": args.mode, "output": str(args.output), "storage_rows": storage_rows}))
 

@@ -9,7 +9,7 @@ range `>=v1.1.0,<v2.0.0`, then follow the `docs/install.md` shipped in that
 checkout, including its native-backend build. This port was tested with DMI
 `c222f18c4db55f6f2d7136b1d6608c0b540b273a` (API v1). Build the native backend
 against the **same PyTorch/CUDA as vLLM 0.29.0**, not a 0.27 environment.
-From the `vllm-0.29-support` integration checkout, run:
+From this integration checkout (or a version-matched release tag), run:
 
 ```bash
 python -m pip install 'vllm==0.29.0'
@@ -31,7 +31,7 @@ before model execution.
 The bounded Qwen3 cell passes both eager and default compilation/CUDA graphs,
 including V2 AOT-cache reload. Use a **fresh version-specific**
 `VLLM_CACHE_ROOT` when migrating; old shared compilation artifacts are not a
-valid baseline. The eager quickstart below is a convenience, not a V2 requirement.
+valid baseline. Eager mode is optional, not a V2 requirement.
 V2 batch-sharded sampling is rejected when `final_logits` capture is selected.
 
 The public `dmi_vllm_integration.worker.DMXGPUWorker` entry point imports and
@@ -90,7 +90,6 @@ from vllm import LLM, SamplingParams
 llm = LLM(
     model="Qwen/Qwen3-0.6B",
     worker_cls="dmi_vllm_integration.worker.DMXGPUWorker",
-    enforce_eager=True,
     additional_config={"dmx_hook_selection": "resid_pre,final_ln,token_ids,final_logits"},
 )
 
@@ -110,8 +109,7 @@ architectures. Online serving also requires the opt-in finalization endpoint:
 ```bash
 export VLLM_PLUGINS=dmi_models,dmi_stop_monitoring
 vllm serve Qwen/Qwen3-0.6B \
-    --worker-cls dmi_vllm_integration.worker.DMXGPUWorker \
-    --enforce-eager
+    --worker-cls dmi_vllm_integration.worker.DMXGPUWorker
 ```
 
 After stopping external request intake, call

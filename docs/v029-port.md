@@ -24,17 +24,18 @@ The DMI root and its integration gitlink are unchanged by this PR.
 ## Boundary coverage
 
 Profile: [v029-audit-profile.json](v029-audit-profile.json).
-The inventory contains 895 occurrences grouped into 572 candidate boundaries.
-[v029-boundaries.tsv](v029-boundaries.tsv) maps all 572 group IDs to semantic
+After removing the obsolete OLMo3 module, the inventory contains 866 occurrences
+grouped into 556 candidate boundaries.
+[v029-boundaries.tsv](v029-boundaries.tsv) maps all 556 group IDs to semantic
 checklist IDs and review scope: **zero unmapped groups**. Mapping a boundary
 is not the same as qualifying every runtime branch.
 
 The grouped inventory includes 4 attribute-patch candidates, 93 configuration
 accesses, 21 copied implementations, 16 DMI environment keys, 21 lazy targets,
-3 private attributes, 86 inheritance boundaries, 234 potential overrides, and
-94 imports. DMI-only hook-manifest methods and environment keys are explicitly
-distinguished from upstream overrides. Unregistered OLMo3 source is explicitly
-unsupported, not an import-compatibility pass.
+3 private attributes, 81 inheritance boundaries, 224 potential overrides, and
+93 imports. DMI-only hook-manifest methods and environment keys are explicitly
+distinguished from upstream overrides. OLMo3 source, oracle, compare remap and
+source-contract entry are removed; upstream 0.29 has no such native target.
 
 ## Changed contracts and evidence
 
@@ -94,12 +95,52 @@ identify how they were created. They were not deleted. Use a fresh,
 version-specific `VLLM_CACHE_ROOT` when migrating; do not carry over old
 compiled artifacts as a qualification baseline.
 
-Storage checks cover request IDs, layer/activation coverage, no gaps/duplicates,
+The original six cells' storage checks cover request IDs, layer/activation coverage, no gaps/duplicates,
 exclusive token ranges, BF16/int32 payload dtypes, shapes, finite hidden states,
 exact input token IDs, and final-logit argmax matching the corresponding public
-decision. Hidden-state values are **not** claimed to have independent
-layer-by-layer numerical reference coverage. The direct raw-logit tap observes
+decision. Those graph cells do **not** have independent layer-by-layer residual
+numerical reference coverage; the eager follow-up below does. The raw-logit tap observes
 stock and monitored outputs identically in separate engine processes.
+
+### PR review follow-up: residual values (2026-09-16)
+
+`tests/v029_smoke.py --residual-reference --runner v1` now installs identical
+test-only norm-input observers in separate stock and monitored engine processes.
+Before the norm mutates any residual in place, the observer independently
+computes the previous `hidden_states + residual` expression (or `hidden_states`
+at the first layer), saving an owned CPU snapshot. It does not read the DMI hook
+output or committed layout to construct its reference. This is a white-box
+numerical diagnostic, explicitly restricted to V1 eager.
+
+Qwen3-0.6B, BF16, TP1, the same 3 prompts and 8 generated tokens:
+
+- All **1,368 residual rows** match the old-expression reference exactly:
+  `(28 resid_pre + 28 resid_mid + 1 resid_final) × 8 × 3`.
+- The monitored reference matches actual persisted tensors by request, hook,
+  layer, token range, shape and dtype. The stock and monitored references also
+  match each other; missing/duplicate keys and altered finite values fail.
+- **1,416 total stored rows**, including token IDs and final logits; public
+  output and all eight raw-logit steps remain equal.
+- Raw evidence: `/tmp/v029-residual-review.b5g8ouqk/` (stock/monitored `.pt`,
+  `.residuals.pt`, `.logits.pt`, and logs). See the compact committed receipt
+  [v029-residual-review.json](evidence/v029-residual-review.json).
+
+This does not numerically qualify Qwen2/Llama checkpoints or graph residuals;
+their hook placement still has focused CPU/source evidence only. The bounded
+release wrapper includes this eager value check after its existing cells.
+
+Other review fixes: retained model/oracle provenance now names 0.29.0; real
+`ParallelConfig` and CPU-instantiated `PromptLogprobsWorker` contracts pin both
+V2 guard attributes; smoke private API/log-string dependencies and the unused
+combined MoE gate boundary are documented in `vllm_contract.md`.
+
+Follow-up validation: **680 passed, 4 skipped, 11 deselected** in the portable
+gate; the three router-state skips also pass when isolated from earlier
+monkey-patching tests. The optional layer-range module still requires a newer
+DMI API than the pinned core. All 21 production lazy targets import without
+the native stub. Wheel and sdist build from a clean temporary source snapshot;
+the wheel contains no OLMo3 module. Shell syntax, diff checks and both opt-in
+library-path wrapper tests pass. No graph GPU cells were rerun in this follow-up.
 
 ## CPU, import and negative-control evidence
 
@@ -123,7 +164,8 @@ stock and monitored outputs identically in separate engine processes.
 
 Build/install DMI native against the target vLLM environment first. A clean
 library search path matters: this host's inherited LD_LIBRARY_PATH referenced
-a different PyTorch/CUDA build, so the commands unset it.
+a different PyTorch/CUDA build. Unsetting it is now an explicit host-specific
+opt-in, `DMI_V029_CLEAR_LD_LIBRARY_PATH=1`; normal runners preserve their paths.
 
 From this integration checkout, with one available CUDA GPU and ClickHouse:
 

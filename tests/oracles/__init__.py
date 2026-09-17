@@ -51,9 +51,6 @@ _ORACLE_MODELS = {
     "DMIMistralCompareForCausalLM": (
         "tests.oracles.mistral_compare:MistralCompareForCausalLM"
     ),
-    "DMIOlmo3CompareForCausalLM": (
-        "tests.oracles.olmo3_compare:Olmo3CompareForCausalLM"
-    ),
     "DMIPhi3CompareForCausalLM": (
         "tests.oracles.phi3_compare:Phi3CompareForCausalLM"
     ),

@@ -3,7 +3,7 @@
 
 # Adapted from llama.py
 
-# Adapted from vllm/model_executor/models/phi3.py in official vLLM 0.27.1.
+# Adapted from vllm/model_executor/models/phi3.py in official vLLM 0.29.0.
 """Phi-3 causal LM using DMI's hooked Llama implementation."""
 
 from dmi_vllm_integration.models.llama import LlamaPForCausalLM

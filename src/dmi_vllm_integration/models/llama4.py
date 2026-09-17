@@ -17,7 +17,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Adapted from vllm/model_executor/models/llama4.py in official vLLM 0.27.1.
+# Adapted from vllm/model_executor/models/llama4.py in official vLLM 0.29.0.
 """Llama 4 language decoder with DMI observation hooks."""
 
 from __future__ import annotations

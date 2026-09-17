@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
 
-# Adapted from vllm/model_executor/models/mistral.py in official vLLM 0.27.1.
+# Adapted from vllm/model_executor/models/mistral.py in official vLLM 0.29.0.
 """Bounded Mistral compare model for DMI transport-value tests."""
 
 from vllm.config import VllmConfig

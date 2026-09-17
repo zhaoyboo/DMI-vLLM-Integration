@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
-# Adapted from vllm/model_executor/models/qwen3.py in official vLLM 0.27.1.
+# Adapted from vllm/model_executor/models/qwen3.py in official vLLM 0.29.0.
 
 # Copyright 2024 The Qwen team.
 # Copyright 2023 The vLLM team.

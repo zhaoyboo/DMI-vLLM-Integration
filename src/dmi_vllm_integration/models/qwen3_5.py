@@ -23,7 +23,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Adapted from vllm/model_executor/models/qwen3_5.py in official vLLM 0.27.1.
+# Adapted from vllm/model_executor/models/qwen3_5.py in official vLLM 0.29.0.
 """Qwen3.6 dense multimodal model with decoder-only DMI hooks."""
 
 from __future__ import annotations

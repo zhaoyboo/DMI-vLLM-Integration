@@ -1,4 +1,4 @@
-"""Focused contracts for the model ports required by vLLM 0.27.1."""
+"""Focused contracts for the model ports required by vLLM 0.29.0."""
 
 from __future__ import annotations
 

@@ -24,7 +24,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Adapted from vllm/model_executor/models/apertus.py in official vLLM 0.27.1.
+# Adapted from vllm/model_executor/models/apertus.py in official vLLM 0.29.0.
 """Apertus dense decoder with DMI observation hooks."""
 
 from __future__ import annotations

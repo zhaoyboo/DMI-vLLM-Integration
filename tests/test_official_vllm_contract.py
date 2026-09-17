@@ -50,3 +50,29 @@ def test_worker_lifecycle_signatures_match_the_integration_contract() -> None:
     assert hasattr(Worker, "compile_or_warm_up_model")
     assert hasattr(Worker, "execute_model")
     assert hasattr(Worker, "shutdown")
+
+
+def test_v029_sampling_guards_match_real_upstream_attributes() -> None:
+    """C06/S03: real objects, not fakes that perpetuate a renamed attribute."""
+    from vllm.config import ParallelConfig
+    from vllm.v1.worker.gpu.sample.prompt_logprob import PromptLogprobsWorker
+    from vllm import SamplingParams
+
+    assert hasattr(ParallelConfig(), "enable_batch_sharded_sampling")
+    worker = PromptLogprobsWorker(max_num_reqs=2)  # CPU NumPy state only.
+    assert worker.in_progress_prompt_logprobs == {}
+    worker.add_request("probe", 0, SamplingParams(prompt_logprobs=1))
+    assert "probe" in worker.in_progress_prompt_logprobs
+    worker.remove_request("probe")
+    assert worker.in_progress_prompt_logprobs == {}
+
+
+def test_removed_olmo3_is_not_a_production_or_oracle_target() -> None:
+    from dmi_vllm_integration.architectures import ARCHITECTURE_REMAP
+    from tests.oracles import _ORACLE_MODELS
+
+    assert "Olmo3ForCausalLM" not in ARCHITECTURE_REMAP
+    assert not any("olmo3" in value.lower() for value in _ORACLE_MODELS.values())
+    root = Path(__file__).parents[1]
+    assert not (root / "src/dmi_vllm_integration/models/olmo3.py").exists()
+    assert not (root / "tests/oracles/olmo3_compare.py").exists()

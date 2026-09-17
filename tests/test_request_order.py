@@ -485,7 +485,7 @@ def test_moe_parallel_checks_follow_selected_routing_hooks(
 
     class FakeMoERunner:
         is_monolithic = False
-        is_internal_router = False
+        gate = None
         do_naive_dispatch_combine = False
         moe_config = SimpleNamespace(
             pcp_size=1,

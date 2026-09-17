@@ -19,7 +19,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Adapted from vllm/model_executor/models/gpt2.py in official vLLM 0.27.1.
+# Adapted from vllm/model_executor/models/gpt2.py in official vLLM 0.29.0.
 # GPT-2 compare model for transport correctness testing.
 # Copy of gpt2_p.py with .copy_() capture added after each hook.
 """GPT-2 compare model: HookPoints + .copy_() in same compiled graph."""

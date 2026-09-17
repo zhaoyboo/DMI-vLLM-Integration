@@ -2,6 +2,11 @@ name: Manual GPU release gate
 
 on:
   workflow_dispatch:
+    inputs:
+      clear_ld_library_path:
+        description: "Opt in only if this runner inherits an incompatible library path"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -24,11 +29,17 @@ jobs:
       VLLM_PLUGINS: dmi_models,dmi_stop_monitoring
       DMX_DB_HOST: localhost
       DMX_DB_PORT: "9000"
+      DMI_V029_CLEAR_LD_LIBRARY_PATH: ${{ inputs.clear_ld_library_path && '1' || '0' }}
     steps:
+      - name: Clear inherited library path only when explicitly requested
+        if: inputs.clear_ld_library_path
+        run: echo 'LD_LIBRARY_PATH=' >> "$GITHUB_ENV"
       - uses: actions/checkout@v4
       - uses: actions/checkout@v4
         with:
           repository: ProjectDMX/DMI
+          # DMI 1.2.0 / API v1; retain the immutable qualification SHA.
+          # No matching v1.2 release tag exists yet; do not mint one in this PR.
           ref: c222f18c4db55f6f2d7136b1d6608c0b540b273a
           path: .ci/dmi
           submodules: false
@@ -43,7 +54,10 @@ jobs:
           git -C .ci/dmi submodule update --init --depth 1 third_party/clickhouse-cpp
           cmake -S .ci/dmi/third_party/clickhouse-cpp -B .ci/dmi/third_party/clickhouse-cpp/build -DCMAKE_BUILD_TYPE=Release -DCMAKE_POSITION_INDEPENDENT_CODE=ON
           cmake --build .ci/dmi/third_party/clickhouse-cpp/build -j2
-          env -u LD_LIBRARY_PATH make -C .ci/dmi/native -j2
+          if [[ "$DMI_V029_CLEAR_LD_LIBRARY_PATH" == 1 ]]; then
+            unset LD_LIBRARY_PATH
+          fi
+          make -C .ci/dmi/native -j2
           python -m pip install --no-deps --editable .ci/dmi
           python -m pip install --no-deps --editable .
       - name: Verify release-runner prerequisites

@@ -32,7 +32,6 @@ _ARCH_REMAP = {
     "MiniCPMForCausalLM": "DMIMiniCPMCompareForCausalLM",
     "MiniMaxM2ForCausalLM": "DMIMiniMaxM2CompareForCausalLM",
     "MistralForCausalLM": "DMIMistralCompareForCausalLM",
-    "Olmo3ForCausalLM": "DMIOlmo3CompareForCausalLM",
     "Phi3ForCausalLM": "DMIPhi3CompareForCausalLM",
     "Qwen2MoeForCausalLM": "DMIQwen2MoeCompareForCausalLM",
     "Qwen3ForCausalLM": "DMIQwen3CompareForCausalLM",

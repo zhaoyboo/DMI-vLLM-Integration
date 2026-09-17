@@ -29,7 +29,6 @@ MODEL_CLASSES = {
     "minicpm.py": "MiniCPMPForCausalLM",
     "minimax_m2.py": "MiniMaxM2PForCausalLM",
     "mistral.py": "MistralPForCausalLM",
-    "olmo3.py": "Olmo3PForCausalLM",
     "phi3.py": "Phi3PForCausalLM",
     "qwen2.py": "Qwen2PForCausalLM",
     "qwen2_moe.py": "Qwen2MoePForCausalLM",
@@ -128,7 +127,7 @@ def _exact_upstream_prefix(upstream_path: str) -> str:
     )
     return (
         f"{upstream_header}\n\n"
-        f"# Adapted from {upstream_path} in official vLLM 0.27.1.\n"
+        f"# Adapted from {upstream_path} in official vLLM 0.29.0.\n"
     )
 
 
@@ -226,7 +225,7 @@ def test_copied_oracle_retains_upstream_license_and_provenance(
     assert 'Licensed under the Apache License, Version 2.0 (the "License")' in source
     assert (
         f"Adapted from vllm/model_executor/models/{upstream_name} "
-        "in official vLLM 0.27.1."
+        "in official vLLM 0.29.0."
     ) in source
 
 

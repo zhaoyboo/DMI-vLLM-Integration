@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
 
-# Adapted from vllm/models/deepseek_v4/nvidia/model.py in official vLLM 0.27.1.
+# Adapted from vllm/models/deepseek_v4/nvidia/model.py in official vLLM 0.29.0.
 """DeepSeek V4 Flash plugin model with decoder monitoring hooks."""
 
 from __future__ import annotations
