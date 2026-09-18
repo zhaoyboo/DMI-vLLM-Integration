@@ -279,7 +279,7 @@ class GranitePForCausalLM(GraniteForCausalLM):
                 prefix=maybe_prefix(prefix, "lm_head"),
             )
             if config.tie_word_embeddings:
-                self.lm_head = self.lm_head.tie_weights(self.model.embed_tokens)
+                self.lm_head.weight = self.model.embed_tokens.weight
             logit_scale = getattr(config, "logit_scale", 1.0)
             if hasattr(config, "logits_scaling"):
                 logit_scale /= config.logits_scaling

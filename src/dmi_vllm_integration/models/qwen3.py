@@ -198,8 +198,9 @@ class Qwen3Attention(nn.Module):
         k_by_head = self.k_norm(k_by_head)
         self.hook_k(k_by_head)
         k = k_by_head.view(k.shape)
-        if self.hook_v.enabled:
-            self.hook_v(v.view(*v.shape[:-1], v.shape[-1] // self.head_dim, self.head_dim))
+        v_head = v.view(*v.shape[:-1], v.shape[-1] // self.head_dim, self.head_dim)
+        self.hook_v(v_head)
+        v = v_head.view(v.shape)
         q, k = self.rotary_emb(positions, q, k)
         attn_output = self.attn(q, k, v)
         self.hook_z(attn_output)
@@ -273,21 +274,24 @@ class Qwen3DecoderLayer(nn.Module):
         hidden_states: torch.Tensor,
         residual: torch.Tensor | None,
     ) -> tuple[torch.Tensor, torch.Tensor]:
-        # Observe the residual returned by upstream's fused norm. A duplicate
-        # add before it changes BF16 fusion/materialization under torch.compile.
-        if residual is None:
+        # resid_pre: read-only capture, preserves fused norm
+        if residual is not None:
+            if self.hook_resid_pre.enabled:
+                self.hook_resid_pre(hidden_states + residual)
+            hidden_states, residual = self.input_layernorm(hidden_states, residual)
+        else:
+            if self.hook_resid_pre.enabled:
+                self.hook_resid_pre(hidden_states)
             residual = hidden_states
             hidden_states = self.input_layernorm(hidden_states)
-        else:
-            hidden_states, residual = self.input_layernorm(hidden_states, residual)
-        self.hook_resid_pre(residual)
 
         self.hook_ln1(hidden_states)
         hidden_states = self.self_attn(positions=positions, hidden_states=hidden_states)
         self.hook_attn_out(hidden_states)
 
+        if self.hook_resid_mid.enabled:
+            self.hook_resid_mid(hidden_states + residual)
         hidden_states, residual = self.post_attention_layernorm(hidden_states, residual)
-        self.hook_resid_mid(residual)
         self.hook_ln2(hidden_states)
         self.hook_mlp_in(hidden_states)
         hidden_states = self.mlp(hidden_states)
@@ -357,8 +361,9 @@ class Qwen3Model(Qwen2Model):
             return IntermediateTensors(
                 {"hidden_states": hidden_states, "residual": residual})
 
-        hidden_states, final_residual = self.norm(hidden_states, residual)
-        self.hook_resid_final(final_residual)
+        if self.hook_resid_final.enabled:
+            self.hook_resid_final(hidden_states + residual)
+        hidden_states, _ = self.norm(hidden_states, residual)
         self.hook_final_ln(hidden_states)
         if aux_hidden_states:
             return hidden_states, aux_hidden_states
@@ -405,14 +410,15 @@ class Qwen3PForCausalLM(
         )
 
         if get_pp_group().is_last_rank:
-            self.lm_head = ParallelLMHead(
-                config.vocab_size,
-                config.hidden_size,
-                quant_config=quant_config,
-                prefix=maybe_prefix(prefix, "lm_head"),
-            )
             if config.tie_word_embeddings:
-                self.lm_head = self.lm_head.tie_weights(self.model.embed_tokens)
+                self.lm_head = self.model.embed_tokens
+            else:
+                self.lm_head = ParallelLMHead(
+                    config.vocab_size,
+                    config.hidden_size,
+                    quant_config=quant_config,
+                    prefix=maybe_prefix(prefix, "lm_head"),
+                )
         else:
             self.lm_head = PPMissingLayer()
 

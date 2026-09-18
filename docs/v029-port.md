@@ -3,6 +3,12 @@
 Local port and bounded qualification, **not an immutable release or a claim of
 GPU support for every registered model**. Audited on 2026-09-15.
 
+**2026-09-18 scope correction:** nonessential model rewrites have been reverted.
+GPU receipts below describe the earlier implementation, not qualification of
+the corrected head. CPU regression evidence and outstanding GPU checks are
+listed in the scope-correction section below. Compiled TP2 transparency remains
+unqualified; no tolerance has been relaxed to accept the reported mismatch.
+
 ## Identity
 
 | Component | Exact basis |
@@ -24,15 +30,15 @@ The DMI root and its integration gitlink are unchanged by this PR.
 ## Boundary coverage
 
 Profile: [v029-audit-profile.json](v029-audit-profile.json).
-After removing the obsolete OLMo3 module, the inventory contains 866 occurrences
-grouped into 556 candidate boundaries.
-[v029-boundaries.tsv](v029-boundaries.tsv) maps all 556 group IDs to semantic
+After removing the obsolete OLMo3 module and elective Llama method, the inventory
+contains 865 occurrences grouped into 555 candidate boundaries.
+[v029-boundaries.tsv](v029-boundaries.tsv) maps all 555 group IDs to semantic
 checklist IDs and review scope: **zero unmapped groups**. Mapping a boundary
 is not the same as qualifying every runtime branch.
 
 The grouped inventory includes 4 attribute-patch candidates, 93 configuration
 accesses, 21 copied implementations, 16 DMI environment keys, 21 lazy targets,
-3 private attributes, 81 inheritance boundaries, 224 potential overrides, and
+3 private attributes, 81 inheritance boundaries, 223 potential overrides, and
 93 imports. DMI-only hook-manifest methods and environment keys are explicitly
 distinguished from upstream overrides. OLMo3 source, oracle, compare remap and
 source-contract entry are removed; upstream 0.29 has no such native target.
@@ -46,10 +52,10 @@ source-contract entry are removed; upstream 0.29 has no such native target.
 | G01, G07, S01–S03 | V2 prepare_inputs | Forward new `batch_req_state` argument unchanged. Snapshot returned packed InputBatch, not scheduler dictionary order. | `tests_v2/test_v2_adapter.py`; actual storage request/token coverage. |
 | G02–G04, G10 | V2 graph dispatch | Forward optional `max_query_len`; preserve the real descriptor and existing capacity fallback. | Signature/forwarding/overflow contracts; real FULL_AND_PIECEWISE replay. |
 | C06, S03–S08 | V2 states / scheduling | Existing speculative, PCP, DCP, DP and DBO guards remain. No guessed counts for speculative verification. | CPU rejection/state-transition coverage; speculation/distributed GPU modes unqualified. |
-| G09, M07, M13 | batch-sharded sampling | Reject final_logits selection when this mode bypasses compute_logits. Keep hidden-state-only sampling unchanged; add upstream Llama compute_logits_local. | CPU pre-device guard and forwarding contracts; sharded sampling GPU cell unqualified. |
+| G09, M07, M13 | batch-sharded sampling | Reject final_logits selection when this mode bypasses compute_logits. Do not add new model sampling methods in this port. | CPU pre-device guard and forwarding contracts; sharded sampling GPU cell unqualified. |
 | G09 | prompt logprobs | Read V2's actual in-progress prompt-logprobs worker state, not V1's num_prompt_logprobs attribute. | Regression proves rejection before upstream executes a capture-incompatible step. |
-| M02, M10 | tied LM heads / loaders | Use ParallelLMHead.tie_weights in copied Qwen constructors; update Qwen2-MoE/Qwen3-MoE/Granite ties. Remove retired AutoWeightsLoader skip_prefixes/skip_substrs; GPT2 uses WeightsMapper. | Loader contracts; real tied-head Qwen3 checkpoint generation. |
-| M04, M11 | residual taps | Qwen2/Qwen3/Llama observe authoritative fused-norm residual outputs rather than adding residuals again for observation. Avoid an unnecessary V reshape feeding Qwen3 attention. | Identity/order negative controls; Qwen3 exact output/logit parity. |
+| M02, M10 | tied LM heads / loaders | Preserve existing constructors and weight ties. Remove retired AutoWeightsLoader skip_prefixes/skip_substrs; GPT2 uses WeightsMapper. Upstream automatically handles aliased parameters. | CPU loader contracts; GPU tied-head rerun pending after the scope correction. |
+| M04, M11 | residual taps | Unchanged relative to 420bafb: restore pre-norm explicit additions where this PR moved them. Preserve Qwen3's original V views and Llama's already-post-norm mid tap. | CPU value/order/disabled-hook and final-tap source contracts; corrected-head GPU qualification pending. |
 | M08 | MoE runner/router | Removed is_internal_router property: use runner.gate for backend validation; Qwen3-MoE and GLM pass hidden states to the runner-owned gate. Observe the single consumed routing result. | CPU route-call/order/value contracts; GPU MoE qualification not claimed. |
 | M04, M07 | Kimi K3 | Preserve upstream SP ordering, avoid double reduce-scatter after fused GEMM-RS, use upstream auxiliary-stream helper and gather combined outputs. | CPU/source contracts only, not a real Kimi checkpoint test. |
 | M04, M14 | Granite | Honor upstream use_rope/NoPE branch. Do not add a Granite SWA alias without qualification. | CPU/source contracts only. |
@@ -57,12 +63,15 @@ source-contract entry are removed; upstream 0.29 has no such native target.
 | G01, N04 | block tables | Current tensor metadata does not consume attention descriptors or block-table contents. | N/A: no CPU shadow is needed or fabricated. A future descriptor feature must add and validate one. |
 
 Patch disposition relative to the integration base: **apply** unchanged
-lifecycle/transport/hooks; **rewrite** the runner, constructor/loader, routing,
+lifecycle/transport/hooks; **rewrite** the runner, loader, routing,
 and model-forward boundaries listed above; **drop** OLMo3 registration. No
 DMI patch is classified as upstreamed. This PR changes only the integration
 repository, not the DMI root or an upstream vLLM checkout.
 
 ## Bounded GPU evidence
+
+Historical evidence for the pre-correction implementation (through `5ce33c9`),
+retained for reproducibility; do not attribute it to the corrected head.
 
 Common workload: three fixed-composition requests, prompt lengths 5/12/14,
 eight greedy output tokens each, BF16, max sequence length 256, max active
@@ -156,9 +165,47 @@ library-path wrapper tests pass. No graph GPU cells were rerun in this follow-up
 - New negative controls reject changed public results, runner/config/runtime
   mismatch, altered logits even with identical argmax, missing logit steps,
   missing configuration provenance, and absent persisted rows.
-- Residual-hook tests distinguish authoritative fused-norm outputs from
-  recomputed additions. V2 tests exercise changed prepare/dispatch arguments
+- Residual-hook tests now enforce the original pre-port placement, including
+  guarded explicit additions. V2 tests exercise changed prepare/dispatch arguments
   and incompatible sampling/logprob modes.
+
+## Scope correction after hardware review (2026-09-18)
+
+Discovery: M04/M11 observation placement and M02/M10 weight tying did not require
+these rewrites for 0.29. Restore the existing contracts instead of optimizing
+them during the port. The necessary AutoWeightsLoader, runner, routing, Granite
+RoPE and Kimi SP changes remain.
+
+- Reverted the residual-placement changes in Qwen2, Qwen3 and Llama. Their
+  attention, decoder and model forward bodies match the integration base.
+  Llama's `resid_mid` was already post-norm in that base and is left unchanged.
+- Reverted Qwen3 V-view cleanup, the added Llama `compute_logits_local`, and
+  optional `tie_weights` alignment in Qwen2/Qwen3/Qwen3.5, Qwen2/Qwen3 MoE,
+  Granite, and the two Qwen3 test oracles. Existing Llama/GPT2 ties are untouched.
+- Kept the independent eager residual-value oracle and strengthened the CPU
+  placement tests. No new optimization PR or new model support is introduced.
+- The reviewer reports a compiled TP2 token divergence at `5ce33c9`; the
+  same-version old-placement control was still pending in that review.
+  Reverting is **not** evidence that this divergence is fixed.
+- All three local GPUs were occupied (about 21–22 GiB each). No GPU workload
+  was launched and no existing process was stopped. Rerun the bounded V1/V2
+  cells and the reviewer's same-version compiled TP2 control before claiming
+  corrected-head GPU transparency. Existing token/logit thresholds and the
+  compiled release gate are unchanged; their failures must remain visible.
+
+Boundary inventory: 865 occurrences / 555 groups, zero unmapped. The only static
+audit warning is the expected empty native source scope (DMI core is separate).
+This is a focused rollback audit, not a new full-matrix qualification.
+
+Corrected-head validation: **689 passed, 4 skipped, 11 deselected** in the
+portable CPU gate. Focused model/loader/source/V2 checks: **107 passed, 1 skipped**.
+The three router-state skips pass in separate fresh processes; the
+remaining optional layer-range module needs a newer DMI API than the pinned
+core. AST comparison against `420bafb` confirms the seven affected production
+model files differ in method bodies only at the necessary Qwen3/Llama loaders,
+Qwen3-MoE routing and Granite RoPE branch. All restored constructors, attention
+views and residual forward bodies match the base. Diff and shell syntax checks
+pass. GPU reruns remain pending as noted above.
 
 ## Reproduce
 
